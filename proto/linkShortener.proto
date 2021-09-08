@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package linkShortener;
+
+//option go_package = "pkg/proto;proto";
+
+service linkShortener{
+  rpc Create (longLink) returns (shortLink) {}
+  rpc Get (shortLink) returns (longLink) {}
+}
+message shortLink {
+  string link = 1;
+}
+message longLink {
+  string link = 1;
+}
