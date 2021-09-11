@@ -5,15 +5,3 @@
 - Сервис должен быть написан на Go и принимать следующие запросы по gRPC:
 1. Метод Create, который будет сохранять оригинальный URL в базе и возвращать сокращённый
 2. Метод Get, который будет принимать сокращённый URL и возвращать оригинальный URL
-
-
-docker build -t server .
-
-docker run --name=linkShortener-db -e POSTGRES_PASSWORD='LX3ZF4M3bAAM4eeeRRwFqJfkwUMbDRHR' -p 5432:5432 -d --rm postgres
-
-docker run --name=linkShortener -p 5000:5000 server (не работает что-то, запускаю через docker desktop)
-
-
-
-# make wait-for-postgres.sh executable
-RUN chmod +x wait-for-postgres.sh
