@@ -1,0 +1,25 @@
+services:
+  server:
+    container_name: server
+    build: ./
+    command: ./wait-for-postgres.sh db ./server
+    ports:
+     - 5000:5000
+    depends_on:
+     - db
+    environment:
+      DB_PASSWORD: LX3ZF4M3bAAM4eeeRRwFqJfkwUMbDRHR
+  db:
+    restart: always
+    container_name: postgres
+    image: postgres:latest
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: LX3ZF4M3bAAM4eeeRRwFqJfkwUMbDRHR
+    volumes:
+     - ./.database/postgres/data:/var/lib/postresql/data
+    ports:
+     - 5432:5432
+
+#volumes:
+#  dbdata:

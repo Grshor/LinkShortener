@@ -15,25 +15,25 @@ const (
 	address = pkg.Address
 )
 
+// не хороший клиент
 func main() {
+	method := "Create"
+	link := "cute link 64"
+
+	log.Printf("Начали")
 	conn, err := grpc.Dial(address, grpc.WithInsecure(), grpc.WithBlock())
 	if err != nil {
 		log.Fatalf("Не удалось подключится: %v", err)
 	}
-
-	defer func(conn *grpc.ClientConn) {
-		err := conn.Close()
-		if err != nil {
-			os.Exit(1)
-		}
-	}(conn)
-
+	log.Printf("Подключились")
+	defer conn.Close()
 	c := pb.NewLinkShortenerClient(conn)
-	method := "Create"
-	link := "https://www.google.com/"
-	if len(os.Args) > 2 {
-		method = os.Args[1]
-		link = os.Args[2]
+
+	// берём аргументы запроса
+	argsLen := len(os.Args)
+	if argsLen > 2 {
+		method = os.Args[argsLen-2]
+		link = os.Args[argsLen-1]
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
