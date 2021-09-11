@@ -93,11 +93,15 @@ func (s *linkShortenerServer) Create(ctx context.Context, in *pb.LongLink) (link
 func main() {
 	log.Printf("Подключаемся к БД")
 	pgConn, err := pgxpool.Connect(context.Background(), pkg.DatabaseUrl)
-	//pgConn, err := pgx.Connect(context.Background(), pkg.DatabaseUrl)
-
 	if err != nil {
 		log.Fatalf("Ошибка подключения к бд по %v : %v", pkg.DatabaseUrl, err) // скорее всего порт занят
 	}
+	createSql := "create table if not exists links(id SERIAL PRIMARY KEY, longLink text, shortLink text);"
+	_, err = pgConn.Exec(context.Background(), createSql)
+	if err != nil {
+		log.Fatalf("Не удалось создать таблицу: %v", err)
+	}
+
 	//defer pgConn.Close(context.Background()) // это для обычной (конкурентно небезопасной) pgx сессии
 	defer pgConn.Close() // для пула конкурентно безопасной pgx сессии
 	s := &linkShortenerServer{pgConn: pgConn}
