@@ -3,13 +3,12 @@ package main
 import (
 	"context"
 	"github.com/jackc/pgx/v4"
-	"linkShortener/pkg"
-	"log"
-	"net"
-	//"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
 	"google.golang.org/grpc"
+	"linkShortener/pkg"
 	pb "linkShortener/pkg/proto"
+	"log"
+	"net"
 )
 
 const (
@@ -17,22 +16,19 @@ const (
 	//linkStart = pkg.Address
 )
 
-//port = pkg
-
 type linkShortenerServer struct {
-	//pgConn *pgx.Conn // для обычной (конкурентно небезопасной) pgx сессии
-	pgConn *pgxpool.Pool // для пула конкурентно безопасной pgx сессии
+	pgConn *pgxpool.Pool // пул конкурентно безопасных pgx сессий
 	pb.UnimplementedLinkShortenerServer
 }
 
 // Get - метод, который принимает сокращённый URL (shortLink), ищет его в базе и возвращает оригинальный (longLink)
 func (s *linkShortenerServer) Get(ctx context.Context, in *pb.ShortLink) (link *pb.LongLink, error error) {
-	_ = ctx
+	var longLink string
 	shortLink := in.GetLink()
+
 	log.Printf("Принял get: %v", shortLink)
 
-	var longLink string
-	err := s.pgConn.QueryRow(context.Background(),
+	err := s.pgConn.QueryRow(ctx,
 		"select longLink from links where shortLink = $1", shortLink).Scan(&longLink)
 	if err != nil {
 		return nil, err
@@ -41,24 +37,19 @@ func (s *linkShortenerServer) Get(ctx context.Context, in *pb.ShortLink) (link *
 }
 
 // Create - метод, который сохраняет оригинальный URL (longLink) в базе и возвращать сокращённый (shortLink)
-// проводит 3 запроса в бд. Можно снизить до 2-х, если использовать обратную кодировку для метода Get, вместо запроса
-// на получение longLink через соответствие shortLink.
-// Тогда в таблице не нужно будет вообще хранить shortLink, или хранить longLink, это на выбор.
-// НЕТ ПРОВЕРКИ longLink на то, реально ли это url.
+// TODO сделать проверку longLink на то, реально ли это url (безопасность)
 func (s *linkShortenerServer) Create(ctx context.Context, in *pb.LongLink) (link *pb.ShortLink, error error) {
 	_ = ctx
 	var shortLink string
 	longLink := in.GetLink()
 	log.Printf("Принял create: %v", longLink)
-
-	tx, err := s.pgConn.Begin(context.Background()) // открываем транзакцию
+	tx, err := s.pgConn.Begin(ctx) // открываем транзакцию
 	if err != nil {
-		//return nil, err // дальше идти невозможно
-		log.Fatalf("Ошибка при conn.Begin: %v", err) // заменить на return
+		return nil, err // дальше идти невозможно
 	}
 
 	// проверяем longUrl на наличие в бд
-	row := tx.QueryRow(context.Background(),
+	row := tx.QueryRow(ctx,
 		"select shortLink from links where longLink = $1", longLink).Scan(&shortLink)
 	if row != pgx.ErrNoRows { // то-есть действительно нашлась такая запись
 		log.Printf("Найден дупликат")
@@ -69,22 +60,24 @@ func (s *linkShortenerServer) Create(ctx context.Context, in *pb.LongLink) (link
 
 	// пишем новый longLink в бд
 	var linkId int // из этого красивого числа мы и получим shortLink
-	row = tx.QueryRow(context.Background(),
+	row = tx.QueryRow(ctx,
 		"insert into links(longLink, shortLink) values ($1, $2) RETURNING id", longLink, shortLink).Scan(&linkId)
-	if row == pgx.ErrNoRows { // хотя какая может быть ошибка на insert?
+	if row == pgx.ErrNoRows {
+		error = row
+
 		log.Fatalf("Ошибка при добавлении записи в базу: %v", err) // заменить на return
 	}
 	// создаём новый shortLink
 	shortLink = pkg.DehydrateAndUpgrade(linkId)
 	// добавляем к новом longLink его shortLink
-	_, err = tx.Exec(context.Background(),
+	_, err = tx.Exec(ctx,
 		"update links SET shortLink = $1 where id = $2", shortLink, linkId)
 	if err != nil {
 		return nil, err // дальше идти невозможно
 		//log.Fatalf("Ошибка при добавлении записи в базу: %v", err) // заменить на return
 	}
 
-	tx.Commit(context.Background())
+	tx.Commit(ctx)
 	error = err
 	link = &pb.ShortLink{Link: shortLink}
 	return
