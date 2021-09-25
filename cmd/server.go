@@ -13,7 +13,6 @@ import (
 
 const (
 	port = pkg.Port
-	//linkStart = pkg.Address
 )
 
 type linkShortenerServer struct {
@@ -39,7 +38,6 @@ func (s *linkShortenerServer) Get(ctx context.Context, in *pb.ShortLink) (link *
 // Create - метод, который сохраняет оригинальный URL (longLink) в базе и возвращать сокращённый (shortLink)
 // TODO сделать проверку longLink на то, реально ли это url (безопасность)
 func (s *linkShortenerServer) Create(ctx context.Context, in *pb.LongLink) (link *pb.ShortLink, error error) {
-	_ = ctx
 	var shortLink string
 	longLink := in.GetLink()
 	log.Printf("Принял create: %v", longLink)
@@ -52,7 +50,7 @@ func (s *linkShortenerServer) Create(ctx context.Context, in *pb.LongLink) (link
 	row := tx.QueryRow(ctx,
 		"select shortLink from links where longLink = $1", longLink).Scan(&shortLink)
 	if row != pgx.ErrNoRows { // то-есть действительно нашлась такая запись
-		log.Printf("Найден дупликат")
+		log.Printf("Найден дубликат")
 		error = row
 		link = &pb.ShortLink{Link: shortLink}
 		return
@@ -64,39 +62,48 @@ func (s *linkShortenerServer) Create(ctx context.Context, in *pb.LongLink) (link
 		"insert into links(longLink, shortLink) values ($1, $2) RETURNING id", longLink, shortLink).Scan(&linkId)
 	if row == pgx.ErrNoRows {
 		error = row
-
-		log.Fatalf("Ошибка при добавлении записи в базу: %v", err) // заменить на return
+		return nil, err
 	}
+
 	// создаём новый shortLink
-	shortLink = pkg.DehydrateAndUpgrade(linkId)
+	shortLink = pkg.EncodeAndUpgrade(linkId)
 	// добавляем к новом longLink его shortLink
 	_, err = tx.Exec(ctx,
 		"update links SET shortLink = $1 where id = $2", shortLink, linkId)
 	if err != nil {
 		return nil, err // дальше идти невозможно
-		//log.Fatalf("Ошибка при добавлении записи в базу: %v", err) // заменить на return
 	}
 
-	tx.Commit(ctx)
-	error = err
+	err = tx.Commit(ctx)
+	if err != nil {
+		return nil, err // дальше идти невозможно
+	}
+
+	error = nil
 	link = &pb.ShortLink{Link: shortLink}
 	return
 }
 
-func main() {
+func dbConnectAndCreateTableIfNeeded() *pgxpool.Pool {
+	//подключаемся к бд
 	log.Printf("Подключаемся к БД")
 	pgConn, err := pgxpool.Connect(context.Background(), pkg.DatabaseUrl)
 	if err != nil {
 		log.Fatalf("Ошибка подключения к бд по %v : %v", pkg.DatabaseUrl, err) // скорее всего порт занят
 	}
+	//создаём таблицу для хранения ссылок (если её ещё нет)
 	createSql := "create table if not exists links(id SERIAL PRIMARY KEY, longLink text, shortLink text);"
 	_, err = pgConn.Exec(context.Background(), createSql)
 	if err != nil {
 		log.Fatalf("Не удалось создать таблицу: %v", err)
 	}
+	return pgConn
+}
 
-	//defer pgConn.Close(context.Background()) // это для обычной (конкурентно небезопасной) pgx сессии
+func main() {
+	pgConn := dbConnectAndCreateTableIfNeeded()
 	defer pgConn.Close() // для пула конкурентно безопасной pgx сессии
+
 	s := &linkShortenerServer{pgConn: pgConn}
 	if err := s.Run(); err != nil {
 		log.Fatalf("Не удалось запустить сервер: %v", err)

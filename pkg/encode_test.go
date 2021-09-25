@@ -12,7 +12,7 @@ func DehydrateAndUpgradeTest(t *testing.T) {
 	}
 
 	for i := 0; i < 10000; i++ {
-		if v := DehydrateAndUpgrade(i); len(v) != 10 || strings.IndexFunc(v, f) != -1 {
+		if v := EncodeAndUpgrade(i); len(v) != 10 || strings.IndexFunc(v, f) != -1 {
 			t.Errorf("Ошибка с %v, получен %v.\n Длина: %v\n Лишние символы: %v",
 				i, v, len(v), strings.IndexFunc(v, f) != -1)
 		}
